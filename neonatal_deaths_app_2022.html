@@ -3,105 +3,22 @@
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
-    <style>
-        .container {
-            position: relative;
-            overflow: auto;
-            width: 100%;
-            padding-top: 56.25%; /* 16:9 Aspect Ratio (divide 9 by 16 = 0.5625) */
-        }
-  
-        /* Then style the iframe to fit in the container div with full height and width */
-        .responsive-iframe {
-                position: absolute;
-                top: 0;
-                left: 0;
-                bottom: 0;
-                right: 0;
-                width: 100%;
-                height: 100%;
-                
-                border: none;
-            }
-
-        /* Style the buttons that are used to open and close the accordion panel */
-        .accordion {
-            background-color: #eee;
-            color: #444;
-            cursor: pointer;
-            padding: 18px;
-            width: 100%;
-            text-align: left;
-            border: none;
-            outline: none;
-            transition: 0.4s;
-        }
-        
-        /* Add a background color to the button if it is clicked on (add the .active class with JS), and when you move the mouse over it (hover) */
-        .active, .accordion:hover {
-            background-color: #ccc;
-        }
-        
-        /* Style the accordion panel. Note: hidden by default */
-        #panel {
-            padding: 0 18px;
-            background-color: white;
-            display: none;
-            overflow: hidden;
-        }
-
-        .accordion:after {
-            content: '\02795'; /* Unicode character for "plus" sign (+) */
-            font-size: 13px;
-            color: #777;
-            float: right;
-            margin-left: 5px;
-        }
-        
-        .active:after {
-            content: '\2796'; /* Unicode character for "minus" sign (-) */
-        }
-
-        .row {
-            margin-left: auto;
-            margin-right: auto; 
-            position: relative;
-            width: 95%;
-        }
-
-        @media (max-width: 700px){
-            .container {
-                width: 80%;
-            }
-        }
-        
-    </style> 
-    <script>
-        function setIframe() {
-            var selection = document.getElementById("fig_select").value;
-            document.getElementById("figure-display").src = selection
-            }
-
-        function openPanel() {
-            var panel = document.getElementById("panel");
-            var acc = document.getElementsByClassName("accordion")[0]
-            /* Toggle between adding and removing the "active" class,
-            to highlight the button that controls the panel */
-            acc.classList.toggle("active");
-            /* Toggle between hiding and showing the active panel */
-            if (panel.style.display === "block") {
-                panel.style.display = "none";
-            } else {
-                panel.style.display = "block";
-            }
-        }   
-    </script>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="scripts/script.js"></script> 
 </head>
 
 <body>
-
+    <br>
+    <div class="text-section">
+        <h1>A continuing trend in fewer neonatal deaths</h1>
+        <p>Last year, the Committee <a href="https://cdsirc.sa.gov.au/why-were-there-fewer-neonatal-deaths-in-2019/">reported</a> that there was a particularly small number of neonatal deaths in 2019. The Committee noted that this reduction in neonatal deaths did not appear to be random; rather, it appeared to be attributable to fewer deaths associated with 'Disorders related to length of gestation and fetal growth' (ICD-10 code block P05-P08; see footnote).</p>
+        <p>The number of neonatal deaths dropped further still in 2020 (Figure 1). Once again, this drop can be attributed to a reduction – relative to the yearly average (2014–2018) – in deaths assigned codes in block P05-P08 (Figure 2). Additionally, and unlike in 2019, there was a substantial reduction in deaths in code block P00-P04 – 'Fetus and newborn affected by maternal factors and by complications of pregnancy, labour and delivery'. This code block is usually by far the most common amongst neonatal deaths – accounting for an average of 13 deaths per year – and includes deaths resulting from common pregnancy conditions such as chorioamnionitis.</p>
+        <p>While there is natural variability in the number of deaths associated with each code block from year to year, the relative magnitude of changes in blocks P00-P04 and P05-P08 observed here were substantially larger and unlikely to be results of chance (see footnote).</p>
+        <br>
+    </div>
     <div class="row">
-        <div id="dropdown" class="col-12"">
+        <div id="dropdown" class="col-12">
             <div>
                 <label for="fig_select"><strong style="font-size: 1em;">Select figure:</strong></label><br>
                 <select id="fig_select" class="form-control" style="width: 100%" onchange="setIframe()">
@@ -118,6 +35,33 @@
             <iframe class="responsive-iframe" src="neonatal_2022_yearly_deaths.html" id="figure-display"></iframe>
         </div>
     </div>
+    <div class="text-section">
+        <br>
+        <p>The Committee is not able to comment on the specific causes of the drop in neonatal deaths, but these data indicate that they may include genuine improvements in antenatal health or neonatal survival of adverse antenatal conditions. This trend in lower neonatal deaths has now been observed across two consecutive years, and it cannot be explained by a changing birth rate; while the yearly number of births has slowly but steadily declined in recent years, the change is far too small to account for the change in deaths (Figure 3).</p>
+        <p>Given that the pattern of neonatal deaths in 2020 was similar to that in 2019, the question remains about an association with the COVID-19 pandemic. Given that the data only cover the earliest phase of the pandemic (especially those factors relating to the gestation period), any potential effects of COVID-19 on birth rates or neonatal death rates may not surface until 2021 or beyond.</p>
+        <p>The Committee will continue to monitor the rates and patterns of neonatal deaths.</p>
+        <br>
+
+        <button type="button" class="accordion" onclick="openPanel()">
+            <b>Footnote: </b>
+        </button>
+
+        <div id="panel">
+            <br>
+            <strong>ICD-10 codes</strong>
+            <p>Most neonatal deaths are assigned codes belonging to <a href="https://icd.who.int/browse10/2019/en#/XVI">Chapter 16</a> ('Certain conditions originating in the perinatal period'). Most of these codes belong to blocks <a href="https://icd.who.int/browse10/2019/en#/P00-P04">P00-P04</a> ('Fetus and newborn affected by maternal factors and by complications of pregnancy, labour and delivery') and <a href="https://icd.who.int/browse10/2019/en#/P05-P08">P05-P08</a> ('Disorders related to length of gestation and fetal growth'). 
+            <br>The blocks presented in Figure 2 are those that occurred in 2019 or 2020 or that have an average yearly count of at least 1. Thus, while other blocks are present in the data, they occur rarely and were not expected to be observed in 2019 or 2020.
+            <br>See the <a href="https://icd.who.int/browse10/2019/en">ICD-10 website</a> and the Committee's <a href="https://cdsirc.sa.gov.au/why-were-there-fewer-neonatal-deaths-in-2019/">previous blog post</a> for more information about ICD-10 coding.
+            <br>Note that more detailed information can be found by hovering over (or tapping on) components of the graphs. In Figure 2, these actions will reveal the descriptions of each code block presented.</p>
+            <strong>Statistical changes in code block counts</strong>
+            <p>To confirm that the drop in neonatal deaths in 2019 and 2020 was disproportionately associated with code blocks P00-P04 and P05-P08, the death counts for each code block in 2019 and 2020 were expressed as standard deviations (SDs) from the yearly mean counts (2014–2018). Of particular note, the number of deaths in block P00-P04 in 2020 was 3.2 SDs below the mean. Similarly, the number of deaths in code block P05-P08 was 2.8 SDs lower in 2019 and 2.0 SDs lower in 2020 (relative to the mean).
+            <br>In contrast, all other comparisons were within 1 SD of the mean, with the exception of block Q20-Q28 in 2020 (1.4 SDs higher) and block Q90-Q99 in 2019 (1.7 SDs lower). These changes were relatively modest both in relative and absolute terms.</p>
+            <strong>Live births and neonatal death rate</strong>
+            <p>The neonatal death rate in 2020 was calculated using an estimate of the number of live births in 2020 (Figure 3). The estimated live birth count was generated by fitting a linear regression to the official live birth counts from 2014–2018 (inclusive). This estimate was validated using both the preliminary official live birth count and an estimate of the final birth count provided by Wellbeing SA. Both figures were within 1% of the estimate used here.</p>
+            <br>
+        </div>
+    </div>
+    <br><br><br>
 
 </body>
 </html>
