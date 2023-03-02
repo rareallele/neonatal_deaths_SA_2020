@@ -1,0 +1,375 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+library(tidyverse)
+library(readxl)
+library(ggplot2)
+library(plotly)
+#library(tseries)
+#library(forecast)
+#library(colortools)
+library(stringr)
+library(odbc)
+library(DBI)
+custom_colours <- c("#000000", "#FEB627", "#7E7E7E", "#27B9FE", "#FFFFFF")
+```
+
+Import exclusions and population data
+```{r message=FALSE}
+exclusions <- readxl::read_xlsx("exclusions_2021.xlsx")$`Case Number`
+```
+
+Import data
+```{r message=FALSE, warning=FALSE}
+# note: this script connects to the old CDR database. if this analysis is performed again, this needs to be changed to query the REDCap database
+# in that case, the ICD-10 codes won't need to be fixed as they are now validated in REDCap
+CDR_query <- read_file("C:\\Users\\jagvan\\OneDrive - South Australia Government\\Code\\SQL Server Management Studio\\Queries\\AnnualReport.sql")
+
+con <- dbConnect(odbc(), "CDR-DSN")
+
+CDR_Case <- dbGetQuery(con,
+                       CDR_query)
+
+data <- CDR_Case %>% 
+  filter(!`Case Number` %in% exclusions,
+         `Year of Death` %in% seq(2005,2020)) %>% # filter out exclusions
+  mutate(State = trimws(toupper(State))) %>% 
+  convert(fct(`Case Number`, Sex, SUDI, `Age Group`, `CP Contact`, `Cultural Background`,
+              `COD Category`, `Coronial case?`, State, `Residential Status`)) %>% 
+  mutate(`Age Group` = 
+           fct_relevel(`Age Group`, "< 28 days", "1 to 11 months", "1 to 4 years", "5 to 9 years", "10 to 14 years", "15 to 17 years"),
+         Sex = fct_recode(Sex, Male = "male", Female = "female")) %>% 
+  rename(Year = `Year of Death`)
+```
+
+```{r}
+# Fix codes missing periods
+# for (row in 1:nrow(data)){
+#   if (!str_detect(data[row, "Underlying COD"], "\\.")){
+#         data[row, "Underlying COD"] <- paste0(str_sub(data[row, "Underlying COD"], 1, 3), ".", str_sub(data[row, "Underlying COD"], 4, -1))
+#       }
+# }
+```
+
+
+```{r}
+# Fix codes missing periods
+data <- data %>% 
+  mutate(`Underlying COD` =
+           if_else(
+             str_length(`Underlying COD`) > 3 & !str_detect(`Underlying COD`, "\\."), paste0(str_sub(`Underlying COD`, 1, 3), ".", str_sub(`Underlying COD`, 4, -1)), `Underlying COD`
+           ))
+```
+
+```{r message=FALSE, echo=FALSE}
+#Load population data (these are available locally but not included in this repository. they can also be found in the Denominators repo)
+all_denominators <- read_csv("my_denominators.csv") %>% 
+  mutate(sex = as.factor(sex)) %>% 
+  rename("Year" = year,
+         "Sex" = sex)
+denominators_byyear <- read_csv("yearly_denominators.csv")
+
+live_births <- read_csv("live_births_2020.csv")
+```
+
+
+```{r}
+newborns <- data %>% filter(`Age Group` == "< 28 days") %>% 
+  mutate(Period = 
+           case_when(
+             Year == 2020 ~ "2020",
+             Year %in% seq(2014, 2018) ~ "2014 to 2018"),
+         Period = factor(Period, 
+                         levels = c("2014 to 2018", "2020")),
+         `COD Category` = recode(`COD Category`, "medical" = "natural")
+         )
+```
+
+Neonatal death distribution by COD Category
+```{r}
+neonatal_year_cod <- newborns %>% 
+  group_by(Year, `COD Category`) %>% 
+  summarise("Number of deaths" = n()) %>% 
+  mutate(`COD Category` = factor(fct_relevel(`COD Category`, "natural")))
+
+bar_colours <- c("#FEB627", "#27B9FE", "sienna2", "slateblue2", "mediumseagreen", "maroon3")
+
+(bar <- plot_ly(data = neonatal_year_cod,
+              type = "bar",
+              x = ~Year,
+              y = ~`Number of deaths`,
+              color = ~`COD Category`,
+              colors = bar_colours,
+              hovertemplate = paste0("Year: ", "%{x}\n" ,"Number of deaths: ", "%{y}")) %>% 
+        
+        layout(autosize=T,
+               #margin = list(l=80, r=20, t=100, b=80, pad=4),
+               barmode = "stack",
+               yaxis = list(title = "Number of deaths",
+                            titlefont = list(size = 16),
+                            range = c(0, 59),
+                            tickfont = list(size=14)),
+               xaxis = list(title = "Year \n",
+                            titlefont = list(size = 16),
+                            tickfont = list(size=14),
+                            tick0 = 2005,
+                            dtick = 3),
+               #title = list(text = "")
+               legend = list(orientation='h',
+                             #x=2005,
+                             y=1,
+                             font = list(size=12))
+          ))
+
+#htmlwidgets::saveWidget(partial_bundle(bar), "neonatal_2022_yearly_deaths.html", selfcontained = TRUE)
+```
+
+Live births and death rates
+```{r}
+numerator <- newborns %>% 
+  group_by(Year) %>% 
+  summarise(Deaths = n())
+
+death_rates <- numerator %>%
+  left_join(select(live_births, c(Year, Total)), on = Year) %>% 
+  mutate(`Death rate` = Deaths/Total*10000)
+
+f3a <- plot_ly(data = death_rates) %>% 
+        add_lines(x = ~Year,
+                  y = ~Total,
+                  name = "Live births",
+                  hovertemplate = paste0("Year: ", "%{x}\n", "Live births: ", as.character(format(death_rates$Total, big.mark = ",")))) %>%
+        layout(yaxis = list(range = c(17000, 22000)),
+               xaxis = list(range = c(2004, 2020),
+                            tick0 = 2005,
+                            dtick = 3))
+f3b <- plot_ly(data = death_rates) %>% 
+    add_lines(x = ~Year,
+              y = ~round(`Death rate`, 1),
+              name = "Death rate",
+              hovertemplate = paste0("Year: ", "%{x}\n", "Death rate: ", "%{y}")) %>% 
+    layout(yaxis = list(range = c(10, 33)),
+           xaxis = list(range = c(2004, 2020),
+                        tick0 = 2005,
+                        dtick = 3),
+           legend = list(x = 0.8, y = 0.95,
+                         bgcolor = 'rgba(0,0,0,0)')
+           )
+#Display plot
+(f3 <- subplot(f3a, f3b, nrows = 2, shareX = TRUE) %>% 
+  layout(xaxis = list(title = "Year \n",
+                      titlefont = list(size = 16),
+                      tickfont = list(size=14)),
+         yaxis = list(title = "Live births",
+                      titlefont = list(size = 16),
+                      tickfont = list(size=14)),
+         yaxis2 = list(title = "Deaths per \n10,000 live births",
+                       titlefont = list(size = 16),
+                       tickfont = list(size=14))))
+
+#htmlwidgets::saveWidget(partial_bundle(f3), "neonatal_2022_livebirths.html", selfcontained = TRUE)
+#htmlwidgets::saveWidget(partial_bundle(f3), "blog-figures/neonatal-figure3_updated.html")
+```
+
+
+Chapter sections
+```{r}
+# UCD
+newborns <- newborns %>% 
+  mutate(Block =
+           case_when(
+             #Chapter 16
+             str_detect(`Underlying COD`, paste0(sprintf("P0%s", seq(0,4)), collapse="|")) ~ "P00-P04",
+             str_detect(`Underlying COD`, paste0(sprintf("P0%s", seq(5,8)), collapse="|")) ~ "P05-P08",
+             str_detect(`Underlying COD`, paste0(sprintf("P%s", seq(10,15)), collapse="|")) ~ "P10-P15",
+             str_detect(`Underlying COD`, paste0(sprintf("P%s", seq(20,29)), collapse="|")) ~ "P20-P29",
+             str_detect(`Underlying COD`, paste0(sprintf("P%s", seq(35,39)), collapse="|")) ~ "P35-P39",
+             str_detect(`Underlying COD`, paste0(sprintf("P%s", seq(50,61)), collapse="|")) ~ "P50-P61",
+             str_detect(`Underlying COD`, paste0(sprintf("P%s", seq(70,74)), collapse="|")) ~ "P70-P74",
+             str_detect(`Underlying COD`, paste0(sprintf("P%s", seq(75,78)), collapse="|")) ~ "P75-P78",
+             str_detect(`Underlying COD`, paste0(sprintf("P%s", seq(80,83)), collapse="|")) ~ "P80-P83",
+             str_detect(`Underlying COD`, paste0(sprintf("P%s", seq(90,96)), collapse="|")) ~ "P90-P96",
+             #Chapter 17
+             str_detect(`Underlying COD`, paste0(sprintf("Q0%s", seq(0,7)), collapse="|")) ~ "Q00-Q07",
+             str_detect(`Underlying COD`, paste0(sprintf("Q%s", seq(10,18)), collapse="|")) ~ "Q10-Q18",
+             str_detect(`Underlying COD`, paste0(sprintf("Q%s", seq(20,28)), collapse="|")) ~ "Q20-Q28",
+             str_detect(`Underlying COD`, paste0(sprintf("Q%s", seq(30,34)), collapse="|")) ~ "Q30-Q34",
+             str_detect(`Underlying COD`, paste0(sprintf("Q%s", seq(35,37)), collapse="|")) ~ "Q35-Q37",
+             str_detect(`Underlying COD`, paste0(sprintf("Q%s", seq(38,45)), collapse="|")) ~ "Q38-Q45",
+             str_detect(`Underlying COD`, paste0(sprintf("Q%s", seq(50,56)), collapse="|")) ~ "Q50-Q56",
+             str_detect(`Underlying COD`, paste0(sprintf("Q%s", seq(60,64)), collapse="|")) ~ "Q60-Q64",
+             str_detect(`Underlying COD`, paste0(sprintf("Q%s", seq(65,79)), collapse="|")) ~ "Q65-Q79",
+             str_detect(`Underlying COD`, paste0(sprintf("Q%s", seq(80,89)), collapse="|")) ~ "Q80-Q89",
+             str_detect(`Underlying COD`, paste0(sprintf("Q%s", seq(90,99)), collapse="|")) ~ "Q90-Q99"
+           ),
+         Block_description =
+           case_when(
+             #Chapter 16
+             Block == "P00-P04" ~ "Fetus and newborn affected by \nmaternal factors and by \ncomplications of pregnancy, \nlabour and delivery",
+             Block == "P05-P08" ~ "Disorders related to length \nof gestation and fetal growth",
+             Block == "P10-P15" ~ "Birth trauma",
+             Block == "P20-P29" ~ "Respiratory and cardiovascular \ndisorders specific to the \nperinatal period",
+             Block == "P35-P39" ~ "Infections specific to \nthe perinatal period",
+             Block == "P50-P61" ~ "Haemorrhagic and haematological \ndisorders of fetus and newborn",
+             Block == "P70-P74" ~ "Transitory endocrine and \nmetabolic disorders specific \nto fetus and newborn",
+             Block == "P75-P78" ~ "Digestive system disorders \nof fetus and newborn",
+             Block == "P80-P83" ~ "Conditions involving the \nintegument and temperature \nregulation of fetus and newborn",
+             Block == "P90-P96" ~ "Other disorders originating \nin the perinatal period",
+             #Chapter 17
+             Block == "Q00-Q07" ~ "Congenital malformations \nof the nervous system",
+             Block == "Q10-Q18" ~ "Congenital malformations \nof eye, ear, face and neck",
+             Block == "Q20-Q28" ~ "Congenital malformations \nof the circulatory system",
+             Block == "Q30-Q34" ~ "Congenital malformations \nof the respiratory system",
+             Block == "Q35-Q37" ~ "Cleft lip and cleft palate",
+             Block == "Q38-Q45" ~ "Other congenital malformations \nof the digestive system",
+             Block == "Q50-Q56" ~ "Congenital malformations of \ngenital organs",
+             Block == "Q60-Q64" ~ "Congenital malformations of \nthe urinary system",
+             Block == "Q65-Q79" ~ "Congenital malformations and \ndeformations of the musculoskeletal system",
+             Block == "Q80-Q89" ~ "Other congenital malformations",
+             Block == "Q90-Q99" ~ "Chromosomal abnormalities, \nnot elsewhere classified"
+           )
+         )
+
+newborns_2019 <- newborns %>% filter(Year == 2019)
+newborns_2020 <- newborns %>% filter(Year == 2020)
+newborns_past5years <- newborns %>% filter(Year %in% c(2018, 2017, 2016, 2015, 2014))
+```
+
+Blocks
+```{r}
+# UCD
+blocks_2019 <- newborns_2019 %>% 
+  group_by(Block) %>% 
+  summarise(n = n()) %>% 
+  mutate(Percentage = n/nrow(newborns_2019)*100,
+         Period = '2019')
+
+blocks_2020 <- newborns_2020 %>% 
+  group_by(Block) %>% 
+  summarise(n = n()) %>% 
+  mutate(Percentage = n/nrow(newborns_2020)*100,
+         Period = '2020')
+
+blocks_past5years <- newborns_past5years %>% 
+  group_by(Block) %>% 
+  summarise(n = n()) %>% 
+  mutate(Percentage = n/nrow(newborns_past5years)*100,
+         Period = '2014 to 2018')
+
+blocks_combined <- bind_rows(blocks_2019, blocks_2020, blocks_past5years) %>% 
+  mutate(Predicted = 
+           case_when(
+             Period == "2014 to 2018" ~ n/5,
+             Period == "2019" ~ n/1,
+             Period == "2020" ~ n/1
+           ),
+         Period = fct_recode(Period, "2014–2018 (mean)" = "2014 to 2018"),
+         Period = fct_relevel(Period, levels = c("2014–2018 (mean)","2019","2020"))) %>% 
+  filter(!is.na(Block)) %>% 
+  left_join(unique(select(newborns, c(Block, Block_description)),
+            on = Block))
+blocks_combined = blocks_combined %>% 
+  filter(Block %in% filter(blocks_combined, Period == "2014–2018 (mean)")$Block,
+         Predicted >= 1)
+
+blocks_yearly <- newborns_past5years %>% 
+  group_by(Year, Block) %>% 
+  summarise(n = n()) %>% 
+  filter(!is.na(Block))
+
+blocks_standard_deviation <- blocks_yearly %>% 
+  group_by(Block) %>% 
+  summarise(sd = sd(n)) %>% 
+  filter(!is.na(sd), !is.na(Block)) %>% 
+  left_join(select(blocks_past5years, Block, n) %>% rename("n_2014_2018_mean" = n), by = "Block") %>%
+  mutate(n_2014_2018_mean = n_2014_2018_mean/5) %>% 
+  filter(n_2014_2018_mean >= 1) %>% 
+  left_join(select(blocks_2019, Block, n) %>% rename("n_2019" = n), by = "Block") %>%
+  left_join(select(blocks_2020, Block, n) %>% rename("n_2020" = n), by = "Block") %>% 
+  mutate(n_2019 = ifelse(is.na(n_2019), 0, n_2019),
+         n_2020 = ifelse(is.na(n_2020), 0, n_2020)) %>% 
+  mutate(Z_2019 = (n_2019-n_2014_2018_mean)/sd,
+         Z_2020 = (n_2020-n_2014_2018_mean)/sd)
+
+blocks_mean_deviation <- blocks_yearly %>% 
+  group_by(Block) %>% 
+  summarise(mad = ie2misc::madstat(n)) %>% 
+  filter(!is.na(mad), !is.na(Block)) %>% 
+  left_join(select(blocks_past5years, Block, n) %>% rename("n_2014_2018_mean" = n), by = "Block") %>%
+  mutate(n_2014_2018_mean = n_2014_2018_mean/5) %>% 
+  filter(n_2014_2018_mean >= 1) %>% 
+  left_join(select(blocks_2019, Block, n) %>% rename("n_2019" = n), by = "Block") %>%
+  left_join(select(blocks_2020, Block, n) %>% rename("n_2020" = n), by = "Block") %>% 
+  mutate(n_2019 = ifelse(is.na(n_2019), 0, n_2019),
+         n_2020 = ifelse(is.na(n_2020), 0, n_2020)) %>% 
+  mutate(Z_2019 = (n_2019-n_2014_2018_mean)/mad,
+         Z_2020 = (n_2020-n_2014_2018_mean)/mad)
+```
+
+
+```{r}
+# UCD
+(f4 <- plot_ly(data = filter(blocks_combined),
+              type = 'bar',
+              x = ~Block,
+              y = ~Predicted,
+              text = ~Block_description,
+              color = ~Period,
+              colors = bar_colours[c(1,2,5)],
+              hovertemplate = paste0("Number of deaths: ", "%{y}\n",
+                                     "Block: ", "%{text}")) %>% 
+        
+        layout(autosize=T,
+               margin = list(l=80, r=20, t=40, b=80, pad=4),
+               yaxis = list(title = "Number of deaths",
+                            titlefont = list(size = 16),
+                            range = c(0, 17),
+                            tickfont = list(size=14)),
+               xaxis = list(title = "ICD-10 Code Block \n(Underlying cause of death)",
+                            titlefont = list(size = 16),
+                            tickfont = list(size=14)),
+               showlegend = TRUE,
+               legend = list(x=0.70, y=0.95,
+                             bgcolor = 'rgba(0,0,0,0)')
+               #,title = list(text = "ICD-10 blocks for neonatal deaths in 2019 vs\nprevious 5-year averages")
+        ))
+
+#htmlwidgets::saveWidget(partial_bundle(f4), "neonatal_2022_codeblocks.html", selfcontained = TRUE)
+```
+
+Blocks and codes
+```{r}
+# UCD
+codes_2019 <- newborns_2019 %>% 
+  group_by(Block, `Underlying COD`) %>% 
+  summarise(n = n()) %>% 
+  mutate(Percentage = n/nrow(newborns_2019)*100,
+         Period = '2019')
+
+codes_2020 <- newborns_2020 %>% 
+  group_by(Block, `Underlying COD`) %>% 
+  summarise(n = n()) %>% 
+  mutate(Percentage = n/nrow(newborns_2020)*100,
+         Period = '2020')
+
+codes_past5years <- newborns_past5years %>% 
+  group_by(Block, `Underlying COD`) %>% 
+  summarise(n = n()) %>% 
+  mutate(Percentage = n/nrow(newborns_past5years)*100,
+         Period = '2014 to 2018')
+
+codes_combined <- bind_rows(codes_2019, codes_2020, codes_past5years) %>% 
+  mutate(Predicted = 
+           case_when(
+             Period == "2014 to 2018" ~ n/5,
+             Period == "2019" ~ n/1,
+             Period == "2020" ~ n/1
+           ),
+         Period = fct_recode(Period, "2014–2018 (mean)" = "2014 to 2018"),
+         Period = fct_relevel(Period, levels = c("2014–2018 (mean)","2019","2020"))) %>% 
+  filter(!is.na(Block)) %>% 
+  left_join(unique(select(newborns, c(Block, Block_description)),
+            on = Block))
+```
